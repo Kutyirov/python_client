@@ -1,5 +1,6 @@
 import socket
 import time
+import re
 
 
 class ClientError(Exception):
@@ -14,12 +15,9 @@ class Client():
         self.request = ""
         self.response = ""
         self.response_status = True
-        # self.sock.sendall("ping".encode("utf8"))
-        #data = self.sock.recv(1024)
-        # print(data)
 
     def get(self, metric):
-        self.request = "get" + str(metric) + "\n"
+        self.request = "get " + str(metric) + "\n"
         self.sock.sendall(self.request.encode("utf8"))
         self.response = self.sock.recv(1024)
         my_dict = {}
@@ -27,7 +25,7 @@ class Client():
         if self.response == b"error\nwrong command\n\n":
             self.response_status = False
             raise ClientError
-        elif self.validate():
+        elif self.validate() or self.response == b"ok\n\n":
             all_metrics = self.response.decode("utf8").split('\n')
             for one_metric in all_metrics:
                 data = one_metric.split(' ')
@@ -38,6 +36,8 @@ class Client():
                 my_dict[data[0]].append((int(data[2]), float(data[1])))
         else:
             raise ClientError
+        for key in my_dict:
+            my_dict[key].sort(key=lambda x: x[0])
         return my_dict
 
     def put(self, metric, value, timestamp=None):
@@ -58,15 +58,34 @@ class Client():
             raise ClientError
 
     def validate(self):
+        #regex = re.compile('^ok\n(.*\n)+\n\n$')
+        data = self.response.decode("utf8")
+        print(data)
+        # '^ok\n(.*\n)+\n\n$'
+        if re.search('^ok(\n.*)+\n\n$', data) is None:
+            return False
+        all_data = data.split('\n')
+        for counter in range(1, len(all_data) - 2):
+            one_data = all_data[counter].split(' ')
+            if len(one_data) != 3:
+                return False
+            try:
+                trash = float(one_data[1])
+                trash = int(one_data[2])
+            except ValueError:
+                raise ClientError
         return True
 
     def __del__(self):
         self.sock.close()
 
 
+# тестирование
+'''
 client = Client("127.0.0.1", 8888, timeout=15)
 
 # client.put("palm.cpu", 0.5, timestamp=1150864247)
 
 print(client.get("*"))
 input()
+'''
